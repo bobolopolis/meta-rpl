@@ -1,0 +1,33 @@
+#!/bin/sh
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+
+set -e
+
+upg="$1"
+if [ ! -f "$upg" ]; then
+	printf "provide upg file\n"
+	exit 1
+fi
+
+rootdir="$(mktemp -d)"
+mount -o compress=zstd -L btr-root $rootdir
+uuid="$(cat /proc/sys/kernel/random/uuid)"
+btrfs subvolume create "$rootdir/$uuid"
+tar -xvf $upg -C "$rootdir/$uuid" --warning=no-timestamp
+
+bootdir="$(mktemp -d)"
+mount -L BTR_BOOT $bootdir
+
+# TODO maybe use rsync to delete files too
+# Start dangerous stuff
+cp -rT $rootdir/$uuid/usr/lib/btrup/boot $bootdir
+umount $bootdir
+printf "version=0\n" > "$rootdir/btrup/config"
+printf "uuid=%s\n" "$uuid" >> "$rootdir/btrup/config"
+umount $rootdir
+# End dangerous stuff
+
+rm -r $rootdir
+rm -r $bootdir

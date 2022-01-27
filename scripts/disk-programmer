@@ -1,0 +1,50 @@
+#!/bin/sh
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+
+set -e
+
+# TODO Make devices configurable
+# TODO Make partition sizes configurable
+
+if [ ! -f "$1" ]; then
+	printf "Provide upgrade package\n"
+	exit 1
+fi
+
+device="/dev/sda"
+boot="/dev/sda1"
+root="/dev/sda2"
+upg="$1"
+
+# Partition
+parted --script $device mklabel msdos
+parted --script $device mkpart primary fat32 1Mib 129Mib
+parted --script $device mkpart primary btrfs 129Mib -- -1
+
+# Format
+mkfs.vfat -F 32 -n BTR_BOOT $boot
+mkfs.btrfs --force --label btr-root $root
+
+# Populate root
+rootdir="$(mktemp -d)"
+mount -o compress=zstd $root $rootdir
+uuid="$(uuidgen)"
+btrfs subvolume create "$rootdir/$uuid"
+tar -xvf $upg -C "$rootdir/$uuid"
+cp $upg $rootdir/$uuid/usr/lib/btrup/upg.btrup
+
+btrfs subvolume create "$rootdir/btrup"
+printf "version=0\n" > "$rootdir/btrup/config"
+printf "uuid=%s\n" "$uuid" >> "$rootdir/btrup/config"
+
+# Populate boot
+bootdir="$(mktemp -d)"
+mount $boot $bootdir
+cp -rT $rootdir/$uuid/usr/lib/btrup/boot $bootdir
+
+umount $rootdir
+umount $bootdir
+rm -r $rootdir
+rm -r $bootdir

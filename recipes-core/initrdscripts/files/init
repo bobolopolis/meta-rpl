@@ -1,0 +1,20 @@
+#!/bin/sh
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+
+mkdir -p /dev /proc /sys /run/lock /var/lock
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t devtmpfs devtmpfs /dev
+
+# Mount btr-root
+mkdir -p /mnt/root
+mount -o compress=zstd -L btr-root /mnt/root
+
+# Read uuid to boot
+uuid="$(grep -oP '^uuid=\K([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})$' /mnt/root/btrup/config)"
+umount /mnt/root
+
+mount -o compress=zstd,subvol=/$uuid -L btr-root /mnt/root
+exec switch_root -c /dev/console /mnt/root /sbin/init
